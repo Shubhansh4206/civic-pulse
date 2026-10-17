@@ -1,6 +1,6 @@
 """
 Database initialization script for CivicPulse.
-Connects to PostgreSQL, activates PostGIS spatial extension if not present,
+Connects to PostgreSQL, activates PostGIS spatial extension if available,
 and creates all relational schemas and spatial tables defined in MasterTicket.
 """
 
@@ -17,7 +17,7 @@ if project_root not in sys.path:
 from sqlalchemy import text
 from backend.config import settings
 from backend.database.session import engine, Base
-from backend.database.models import MasterTicket
+from backend.database.models import MasterTicket, USE_POSTGIS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,22 +30,44 @@ def init_database() -> None:
     """
     Initialize the database:
       1. Verify database connectivity.
-      2. Ensure PostGIS spatial extension is enabled (on PostgreSQL).
+      2. Check and enable PostGIS spatial extension (if installed on PostgreSQL host).
       3. Create all tables registered with Base.metadata (MasterTicket, etc.).
+      4. Validate column schemas and PostGIS upgrade path.
     """
     logger.info("Initializing CivicPulse database...")
     logger.info("Target connection URL: %s", engine.url)
 
     try:
         with engine.connect() as connection:
-            # 1. Enable PostGIS extension for PostgreSQL dialects
             if engine.dialect.name == "postgresql":
-                logger.info("Ensuring PostGIS extension is active...")
-                connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
-                connection.commit()
-                logger.info("PostGIS extension confirmed.")
+                # Check if postgis extension files are installed in PostgreSQL share/extension
+                postgis_available = connection.execute(
+                    text("SELECT 1 FROM pg_available_extensions WHERE name = 'postgis';")
+                ).scalar()
 
-                # Ensure report_count column exists if table was pre-existing
+                if postgis_available:
+                    logger.info("Enabling PostGIS extension...")
+                    connection.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
+                    connection.commit()
+                    logger.info("PostGIS extension confirmed.")
+                else:
+                    logger.warning(
+                        "PostGIS extension is not installed in PostgreSQL 16.\n"
+                        "-> Initializing database with coordinate fallback.\n"
+                        "-> To enable native PostGIS indexing later, run Stack Builder "
+                        "('C:\\Program Files\\PostgreSQL\\16\\bin\\stackbuilder.exe') "
+                        "and install 'PostGIS 3.4 Bundle'."
+                    )
+
+        # Create all ORM tables
+        logger.info("Creating database tables from ORM metadata...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("Successfully registered tables: %s", list(Base.metadata.tables.keys()))
+
+        # Post-creation column and migration checks
+        with engine.connect() as connection:
+            if engine.dialect.name == "postgresql":
+                # 1. Ensure report_count column exists
                 connection.execute(text("""
                     DO $$ 
                     BEGIN 
@@ -58,10 +80,22 @@ def init_database() -> None:
                 """))
                 connection.commit()
 
-        # 2. Create all ORM tables
-        logger.info("Creating database tables from ORM metadata...")
-        Base.metadata.create_all(bind=engine)
-        logger.info("Successfully created all tables: %s", list(Base.metadata.tables.keys()))
+                # 2. If PostGIS was enabled and location was previously VARCHAR, upgrade to geometry
+                connection.execute(text("""
+                    DO $$ 
+                    BEGIN 
+                        IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') THEN
+                            IF EXISTS (
+                                SELECT 1 FROM information_schema.columns 
+                                WHERE table_name = 'master_tickets' AND column_name = 'location' AND data_type = 'character varying'
+                            ) THEN
+                                ALTER TABLE master_tickets ALTER COLUMN location TYPE geometry(POINT, 4326) USING location::geometry;
+                            END IF;
+                        END IF;
+                    END $$;
+                """))
+                connection.commit()
+
         logger.info("Database initialization completed successfully!")
 
     except Exception as exc:

@@ -141,6 +141,7 @@ async def report_issue(
             radius_meters=50
         )
     except Exception as exc:
+        db.rollback()
         logger.warning("Deduplication lookup encountered an error (%s); proceeding as new ticket.", exc)
 
     # 6. Duplicate handling vs New Ticket creation
@@ -187,7 +188,8 @@ async def report_issue(
 
     # PostGIS WKT Point: POINT(longitude latitude) with explicit SRID 4326 (WGS84)
     normalized_image_url = saved_image_path.replace("\\", "/")
-    point_geom = WKTElement(f"POINT({longitude} {latitude})", srid=4326)
+    from backend.database.models import USE_POSTGIS
+    point_geom = WKTElement(f"POINT({longitude} {latitude})", srid=4326) if USE_POSTGIS else f"POINT({longitude} {latitude})"
 
     new_ticket = MasterTicket(
         title=title.strip(),

@@ -1,13 +1,33 @@
 """
 SQLAlchemy ORM models for CivicPulse.
-Defines MasterTicket with PostGIS Geometry POINT spatial attributes.
+Defines MasterTicket with PostGIS Geometry POINT spatial attributes,
+with adaptive fallback support when PostGIS extension is pending installation.
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, Text, DateTime, func
+import logging
+from sqlalchemy import Column, Integer, String, Float, Text, DateTime, func, text
 from geoalchemy2 import Geometry
 
-from backend.database.session import Base
+from backend.database.session import Base, engine
+
+logger = logging.getLogger(__name__)
+
+
+def check_postgis_support() -> bool:
+    """Check if the connected PostgreSQL instance has the PostGIS extension installed."""
+    try:
+        if engine.dialect.name != "postgresql":
+            return False
+        with engine.connect() as conn:
+            res = conn.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'postgis';")).scalar()
+            return bool(res)
+    except Exception:
+        return False
+
+
+# Determine whether native PostGIS Geometry type is available
+USE_POSTGIS: bool = check_postgis_support()
 
 
 class MasterTicket(Base):
@@ -25,7 +45,12 @@ class MasterTicket(Base):
     status = Column(String(50), nullable=False, default="OPEN", index=True)
 
     # PostGIS spatial column: WGS84 coordinates (SRID 4326) as 2D POINT
-    location = Column(Geometry(geometry_type="POINT", srid=4326, spatial_index=True), nullable=True)
+    # If PostGIS is active, binds to Geometry('POINT', 4326). Otherwise stores WKT string.
+    if USE_POSTGIS:
+        location = Column(Geometry(geometry_type="POINT", srid=4326, spatial_index=True), nullable=True)
+    else:
+        location = Column(String(255), nullable=True)
+
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
 

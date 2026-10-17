@@ -1,7 +1,8 @@
 """
 Spatial deduplication service for CivicPulse.
-Utilizes PostGIS ST_DWithin and ST_MakePoint spatial functions via GeoAlchemy2
-to identify duplicate municipal tickets within a designated geographic radius.
+Identifies duplicate municipal tickets within a designated geographic radius.
+Uses PostGIS ST_DWithin and ST_MakePoint when PostGIS extension is available,
+with automatic transaction rollback and geodesic Haversine fallback.
 """
 
 from typing import Optional
@@ -9,10 +10,8 @@ import math
 import logging
 from sqlalchemy import cast
 from sqlalchemy.orm import Session
-from geoalchemy2 import Geography
-from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
 
-from backend.database.models import MasterTicket
+from backend.database.models import MasterTicket, USE_POSTGIS
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ logger = logging.getLogger(__name__)
 def _haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
     Compute great-circle distance between two GPS coordinates in meters.
-    Used as an in-memory fallback for local development or non-PostGIS test fixtures.
+    Used for geodesic proximity matching when native PostGIS is not present.
     """
     radius_earth_meters = 6371000.0
     phi1, phi2 = math.radians(lat1), math.radians(lat2)
@@ -35,6 +34,43 @@ def _haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: floa
     return radius_earth_meters * c
 
 
+def _find_duplicate_fallback(
+    db: Session,
+    clean_category: str,
+    lat: float,
+    lon: float,
+    radius_meters: int
+) -> Optional[MasterTicket]:
+    """In-memory geodesic distance deduplication based on latitude/longitude."""
+    try:
+        candidates = (
+            db.query(MasterTicket)
+            .filter(
+                MasterTicket.status == "OPEN",
+                MasterTicket.category.ilike(clean_category),
+                MasterTicket.latitude.isnot(None),
+                MasterTicket.longitude.isnot(None)
+            )
+            .all()
+        )
+
+        for candidate in candidates:
+            if candidate.latitude is not None and candidate.longitude is not None:
+                dist = _haversine_distance_meters(lat, lon, candidate.latitude, candidate.longitude)
+                if dist <= radius_meters:
+                    logger.info(
+                        "Duplicate ticket found via fallback: Ticket #%s (%s) is %.1fm away",
+                        candidate.id, candidate.category, dist
+                    )
+                    return candidate
+
+        return None
+    except Exception as exc:
+        db.rollback()
+        logger.error("Fallback deduplication query failed (%s). Rolled back transaction.", exc)
+        return None
+
+
 def find_duplicate_ticket(
     db: Session,
     category: str,
@@ -46,9 +82,9 @@ def find_duplicate_ticket(
     Search for existing active municipal tickets of the same category within
     a spatial radius (default: 50 meters).
 
-    Integrates PostGIS ST_DWithin and ST_MakePoint via GeoAlchemy2 by casting
-    WGS84 geometries (SRID 4326) to geography to perform geodesic distance
-    calculations in meters.
+    If PostGIS is active, executes ST_DWithin on geography geometries.
+    If PostGIS is not available or if any spatial error occurs, performs db.rollback()
+    to maintain a healthy transaction state and queries via Haversine distance.
 
     Args:
         db: Active SQLAlchemy database session.
@@ -74,11 +110,17 @@ def find_duplicate_ticket(
 
     clean_category = category.strip().lower()
 
+    # 1. If PostGIS is disabled or not installed, bypass PostGIS to avoid transaction aborts
+    if not USE_POSTGIS:
+        return _find_duplicate_fallback(db, clean_category, lat, lon, radius_meters)
+
+    # 2. PostGIS spatial query path
     try:
-        # Construct reference WGS84 point: POINT(lon lat)
+        from geoalchemy2 import Geography
+        from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
+
         reference_point = ST_SetSRID(ST_MakePoint(float(lon), float(lat)), 4326)
 
-        # Primary Query: PostGIS ST_DWithin with geography casting for metric distance
         query = (
             db.query(MasterTicket)
             .filter(
@@ -97,7 +139,7 @@ def find_duplicate_ticket(
         match = query.first()
         if match:
             logger.info(
-                "Duplicate ticket found: Ticket #%d (%s) is within %dm of reported (%.4f, %.4f)",
+                "Duplicate ticket found via PostGIS: Ticket #%s (%s) is within %dm of (%.4f, %.4f)",
                 match.id, match.category, radius_meters, lat, lon
             )
             return match
@@ -105,34 +147,10 @@ def find_duplicate_ticket(
         return None
 
     except Exception as exc:
+        # Crucial: Roll back the aborted transaction so subsequent statements succeed
+        db.rollback()
         logger.warning(
-            "PostGIS spatial query failed (%s). Attempting in-memory coordinate fallback.",
+            "PostGIS spatial query failed (%s). Rolled back transaction and attempting fallback.",
             exc
         )
-        # Fallback query for non-PostGIS SQLite test environments or unindexed location fields
-        try:
-            candidates = (
-                db.query(MasterTicket)
-                .filter(
-                    MasterTicket.status == "OPEN",
-                    MasterTicket.category.ilike(clean_category),
-                    MasterTicket.latitude.isnot(None),
-                    MasterTicket.longitude.isnot(None)
-                )
-                .all()
-            )
-
-            for candidate in candidates:
-                if candidate.latitude is not None and candidate.longitude is not None:
-                    dist = _haversine_distance_meters(lat, lon, candidate.latitude, candidate.longitude)
-                    if dist <= radius_meters:
-                        logger.info(
-                            "Duplicate ticket found via fallback: Ticket #%d is %.1fm away",
-                            candidate.id, dist
-                        )
-                        return candidate
-
-            return None
-        except Exception as inner_exc:
-            logger.error("Deduplication query completely failed: %s", inner_exc)
-            raise
+        return _find_duplicate_fallback(db, clean_category, lat, lon, radius_meters)
