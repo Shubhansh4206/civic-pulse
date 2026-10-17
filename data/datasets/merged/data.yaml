@@ -1,0 +1,8 @@
+path: D:/projects/civic pulse/data/datasets/merged
+train: images/train
+val: images/val
+test: images/test
+nc: 2
+names:
+  0: pothole
+  1: garbage_dumpster

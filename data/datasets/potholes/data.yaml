@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['pothole']
+
+roboflow:
+  workspace: vasanthakumar662005
+  project: pothole-pq3lu
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/vasanthakumar662005/pothole-pq3lu/dataset/1
