@@ -1,0 +1,39 @@
+# Environment variables and secrets
+.env
+.env.local
+*.env
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Machine learning & data files
+*.pt
+*.pth
+*.onnx
+*.engine
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
