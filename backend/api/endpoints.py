@@ -3,7 +3,7 @@ API Endpoints for CivicPulse.
 Defines ticket ingestion, multimodal triage, and spatial deduplication endpoints.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 import uuid
 import shutil
@@ -25,6 +25,77 @@ from backend.services.deduplication import find_duplicate_ticket
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Tickets"])
+
+
+class StatusUpdate(BaseModel):
+    status: str = Field(..., description="Target ticket status, e.g. RESOLVED, OPEN, IN_PROGRESS")
+
+
+@router.get(
+    "/report",
+    summary="List Municipal Issue Reports",
+    description="Retrieve all municipal tickets ordered by final priority score."
+)
+@router.get(
+    "/tickets",
+    summary="List Municipal Issue Reports (Alias)",
+    include_in_schema=False
+)
+def list_reports(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
+    """Retrieve all MasterTicket records for the frontend dashboard."""
+    tickets = db.query(MasterTicket).order_by(MasterTicket.final_priority_score.desc()).all()
+    return [
+        {
+            "ticket_id": t.id,
+            "title": t.title,
+            "description": t.description,
+            "category": t.category,
+            "status": t.status,
+            "latitude": t.latitude,
+            "longitude": t.longitude,
+            "image_url": t.image_url,
+            "text_urgency": t.text_urgency,
+            "visual_severity": t.visual_severity,
+            "final_priority_score": t.final_priority_score,
+            "priority_level": t.priority_level,
+            "report_count": t.report_count or 1
+        }
+        for t in tickets
+    ]
+
+
+@router.patch(
+    "/report/{ticket_id}",
+    summary="Update Report Status",
+    description="Update the status of a specific municipal ticket (e.g. mark RESOLVED)."
+)
+@router.patch(
+    "/tickets/{ticket_id}",
+    summary="Update Report Status (Alias)",
+    include_in_schema=False
+)
+def update_report_status(
+    ticket_id: int,
+    payload: StatusUpdate,
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """Update ticket resolution status."""
+    ticket = db.query(MasterTicket).filter(MasterTicket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ticket #{ticket_id} not found."
+        )
+    ticket.status = payload.status.upper()
+    ticket.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(ticket)
+    return {
+        "ticket_id": ticket.id,
+        "status": ticket.status,
+        "message": f"Ticket #{ticket.id} status updated to {ticket.status}."
+    }
+
 
 
 class ReportResponse(BaseModel):
