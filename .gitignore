@@ -37,3 +37,8 @@ htmlcov/
 *.swo
 .DS_Store
 Thumbs.db
+
+# Ignore large AI datasets and model weights
+data/datasets/
+*.zip
+models/*.pt
