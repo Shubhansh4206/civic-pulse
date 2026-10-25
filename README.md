@@ -1,5 +1,23 @@
 # CivicPulse 🏙️
 
+Smart Department Routing setup, migration, training/evaluation, API additions and verification results are documented in [DEPARTMENT_ROUTING.md](DEPARTMENT_ROUTING.md).
+
+## Semantic duplicate detection
+
+Reports within 5 metres are compared with CPU `all-MiniLM-L6-v2` embeddings and cosine similarity (default threshold 0.80). Every submission now retains its own row, evidence, routing and priority; the old spatial merge is no longer used by POST. Existing historical records/counts are unchanged. Matching OPEN reports, regardless of visual category, share `duplicate_group_id`; `duplicate_similarity` records a matching pair's score and `related_report_count` counts other saved rows in the group. Group membership is advisory and can be transitive, not a guarantee that every pair matches. No report is deleted or automatically resolved.
+
+Before starting the updated API, install the additional dependency, provision the model once, and apply the additive migration to your actual database (Feature 1 migration must already be applied):
+
+```powershell
+python -m pip install sentence-transformers==5.1.2
+python scripts/prepare_semantic_model.py
+psql -h localhost -U postgres -d civicpulse_db -v ON_ERROR_STOP=1 -f backend/database/migrations/002_semantic_duplicates.sql
+```
+
+Configure `SEMANTIC_DUPLICATES_ENABLED`, `SEMANTIC_DUPLICATE_RADIUS_METERS=5.0`, and `SEMANTIC_DUPLICATE_THRESHOLD=0.80` in `.env`. Migration is required even when disabled. The model loads once per process from the provisioned local folder; restart after fixing a failed model load. A bounded in-memory embedding cache avoids repeat inference. Missing models or annotation errors leave the original report saved normally. Structured events reuse request IDs without logging text or embeddings.
+
+Smoke check: `python -m pytest tests/test_routing_integration.py -q`. It exercises real Sentence-BERT with isolated SQLite and stubbed YOLO/DistilBERT outputs. Submit similar complaints at the same coordinates and an unrelated complaint: GET and dashboard should show separate rows with a “Possible Duplicate” badge only for matches. Similar text more than 5m away should remain ungrouped. The citizen modal still uses fixed coordinates, so use the API to check different locations. Long texts follow MiniLM's tokenizer truncation; similarity is not a probability.
+
 CivicPulse is an AI-powered municipal hazard reporting and dispatch dashboard. It utilizes a Multi-Modal Decision Fusion System, combining Deep Learning (YOLOv8) for image-based visual severity scoring and Natural Language Processing (DistilBERT) for text-based urgency assessment.
 
 ## 💻 Tech Stack

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # Engine configuration parameters
 engine_kwargs = {
     "echo": settings.DEBUG,
+    "hide_parameters": True,  # Never echo complaint contents or bound credentials.
     "pool_pre_ping": True,  # Verifies connection liveness before checkout
 }
 
@@ -30,7 +31,7 @@ else:
 try:
     engine = create_engine(settings.DATABASE_URL, **engine_kwargs)
 except Exception as exc:
-    logger.error("Failed to initialize SQLAlchemy engine with URL '%s': %s", settings.DATABASE_URL, exc)
+    logger.error("Failed to initialize SQLAlchemy engine (%s)", type(exc).__name__)
     raise
 
 # Factory for creating database sessions
@@ -58,7 +59,7 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     except Exception as exc:
         db.rollback()
-        logger.error("Database session rolled back due to error: %s", exc)
+        logger.error("Database session rolled back due to error (%s)", type(exc).__name__)
         raise
     finally:
         db.close()

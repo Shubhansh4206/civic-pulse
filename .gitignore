@@ -42,3 +42,9 @@ Thumbs.db
 data/datasets/
 *.zip
 models/*.pt
+# Local routing verification environment and provisioned WordNet corpus
+.venv-routing/
+.nltk_data/
+
+models/all-MiniLM-L6-v2/
+models/.semantic-cache/

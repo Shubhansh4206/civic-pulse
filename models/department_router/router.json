@@ -1,0 +1,9 @@
+{
+  "model_version": "synthetic-nb-v1-2edda6d04834",
+  "preprocessing_version": "wordnet-lesk-v1",
+  "training_sha256": "2edda6d04834aa2041f0c330b37fc836377a07725cacac3f6707e36f8dc06389",
+  "training_count": 100,
+  "sklearn_version": "1.7.2",
+  "nltk_version": "3.9.2",
+  "synthetic_only": true
+}

@@ -96,7 +96,31 @@ def init_database() -> None:
                 """))
                 connection.commit()
 
+                # 3. Ensure semantic duplicate columns exist (002_semantic_duplicates migration)
+                connection.execute(text("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'duplicate_group_id'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN duplicate_group_id INTEGER;
+                            CREATE INDEX IF NOT EXISTS ix_master_tickets_duplicate_group_id
+                                ON master_tickets (duplicate_group_id);
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'duplicate_similarity'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN duplicate_similarity DOUBLE PRECISION;
+                        END IF;
+                    END $$;
+                """))
+                connection.commit()
+                logger.info("Semantic duplicate columns verified.")
+
         logger.info("Database initialization completed successfully!")
+
 
     except Exception as exc:
         logger.error("Failed to initialize database: %s", exc)

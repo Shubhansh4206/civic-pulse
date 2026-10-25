@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
+from backend.request_context import RequestIDMiddleware
 from backend.api.endpoints import router as tickets_router
 
 # Initialize FastAPI application
@@ -38,7 +39,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+
+app.add_middleware(RequestIDMiddleware)
 
 # Register API routers
 app.include_router(tickets_router, prefix=settings.API_V1_PREFIX)

@@ -61,3 +61,11 @@ python-multipart>=0.0.9
 
 kaggle>=2.2.4
 roboflow>=1.7.1
+
+# Classical department routing (CPU)
+nltk==3.9.2
+scikit-learn==1.7.2
+joblib==1.5.3
+
+# Pretrained semantic duplicate detection (CPU; no training)
+sentence-transformers==5.1.2

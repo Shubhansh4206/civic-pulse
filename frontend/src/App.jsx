@@ -213,6 +213,26 @@ function TicketCard({ ticket, active, onSelect, cardRef }) {
 
               <p className="text-sm leading-relaxed text-slate-600">{ticket.description}</p>
 
+              {ticket.duplicate_group_id != null && (
+                <div className="flex items-center gap-2 rounded-2xl bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
+                  <Layers size={14} />
+                  <span className="font-semibold">Possible Duplicate</span>
+                  <span>{ticket.duplicate_similarity != null ? `${pct(ticket.duplicate_similarity)} similarity · ` : ""}{ticket.related_report_count ?? 0} related reports</span>
+                </div>
+              )}
+
+              {ticket.predicted_department && (
+                <div className="rounded-2xl bg-slate-50 px-3.5 py-2.5 text-xs text-slate-600">
+                  <span className="font-semibold text-slate-800">Department: </span>
+                  {ticket.predicted_department.replaceAll("_", " ")}
+                  {ticket.department_confidence != null && (
+                    <span className="ml-2 text-slate-500">
+                      ({pct(ticket.department_confidence)} {ticket.routing_method?.endsWith(":low_confidence") ? "best candidate confidence" : "classifier confidence"})
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-3 rounded-2xl bg-slate-50 p-3.5">
                 <ScoreBar label="Priority score" value={ticket.final_priority_score} color={color} />
                 <ScoreBar label="Text urgency" value={ticket.text_urgency} color="#6366f1" />

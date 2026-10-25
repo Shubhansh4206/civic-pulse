@@ -63,6 +63,20 @@ class MasterTicket(Base):
     final_priority_score = Column(Float, nullable=True, default=0.0, index=True)
     priority_level = Column(String(20), nullable=True, default="LOW", index=True)
 
+    # Additive routing fields; historical tickets remain NULL until evaluated.
+    predicted_department = Column(String(100), nullable=True)
+    department_confidence = Column(Float, nullable=True)
+    routing_method = Column(String(100), nullable=True)
+    routing_model_version = Column(String(100), nullable=True)
+
+    # Potential duplicate grouping never combines or removes original reports.
+    duplicate_group_id = Column(Integer, nullable=True, index=True)
+    duplicate_similarity = Column(Float, nullable=True)
+
+    # CLIP image-text consistency (advisory only; never alters scores or acceptance).
+    clip_similarity = Column(Float, nullable=True)
+    clip_status = Column(String(20), nullable=True)  # CONSISTENT | SUSPICIOUS | UNVERIFIED
+
     # Triage and reports metadata
     report_count = Column(Integer, nullable=False, default=1)
 

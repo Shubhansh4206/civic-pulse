@@ -9,8 +9,13 @@ import uuid
 import shutil
 import logging
 from datetime import datetime
-from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status
+from collections import Counter
+from time import perf_counter
+from fastapi import APIRouter, Depends, Form, File, UploadFile, HTTPException, status, Request
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
+from backend.services.department_service import predict_department, fallback_result
+from backend.routing_logging import routing_event
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -20,11 +25,17 @@ from geoalchemy2.elements import WKTElement
 from backend.services.cv_service import process_image_with_yolo
 from backend.services.nlp_service import compute_text_urgency
 from backend.services.fusion_service import fuse_scores, classify_priority
-from backend.services.deduplication import find_duplicate_ticket
+from backend.services.semantic_duplicate_service import annotate_duplicate
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Tickets"])
+
+
+def routing_fields(ticket):
+    return {key: getattr(ticket, key, None) for key in (
+        "predicted_department", "department_confidence", "routing_method", "routing_model_version"
+    )}
 
 
 class StatusUpdate(BaseModel):
@@ -44,8 +55,12 @@ class StatusUpdate(BaseModel):
 def list_reports(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """Retrieve all MasterTicket records for the frontend dashboard."""
     tickets = db.query(MasterTicket).order_by(MasterTicket.final_priority_score.desc()).all()
+    group_counts = Counter(t.duplicate_group_id for t in tickets if t.duplicate_group_id is not None)
     return [
         {
+            "duplicate_group_id": t.duplicate_group_id,
+            "duplicate_similarity": t.duplicate_similarity,
+            "related_report_count": max(0, group_counts[t.duplicate_group_id] - 1) if t.duplicate_group_id is not None else 0,
             "ticket_id": t.id,
             "title": t.title,
             "description": t.description,
@@ -58,7 +73,8 @@ def list_reports(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
             "visual_severity": t.visual_severity,
             "final_priority_score": t.final_priority_score,
             "priority_level": t.priority_level,
-            "report_count": t.report_count or 1
+            "report_count": t.report_count or 1,
+            **routing_fields(t)
         }
         for t in tickets
     ]
@@ -93,15 +109,24 @@ def update_report_status(
     return {
         "ticket_id": ticket.id,
         "status": ticket.status,
-        "message": f"Ticket #{ticket.id} status updated to {ticket.status}."
+        "message": f"Ticket #{ticket.id} status updated to {ticket.status}.",
+        **routing_fields(ticket)
     }
 
 
 
 class ReportResponse(BaseModel):
     """Structured response model for citizen issue reporting."""
+    predicted_department: Optional[str] = None
+    department_confidence: Optional[float] = None
+    routing_method: Optional[str] = None
+    routing_model_version: Optional[str] = None
+    request_id: Optional[str] = None
+    duplicate_group_id: Optional[int] = None
+    duplicate_similarity: Optional[float] = None
+    related_report_count: int = 0
     ticket_id: int = Field(..., description="Unique MasterTicket database identifier")
-    is_duplicate: bool = Field(..., description="True if report was merged with existing open ticket")
+    is_duplicate: bool = Field(..., description="True if report belongs to a potential duplicate group; original report is retained")
     message: str = Field(..., description="Triage and deduplication outcome summary")
     category: str = Field(..., description="Triage category (e.g., pothole, garbage_pile)")
     final_priority_score: float = Field(..., description="Multimodal priority score (0.0 to 1.0)")
@@ -120,6 +145,7 @@ class ReportResponse(BaseModel):
     description="Ingest citizen issue report, run YOLOv8 CV + DistilBERT NLP, calculate multimodal priority, and spatially deduplicate against existing PostGIS tickets."
 )
 async def report_issue(
+    request: Request,
     title: str = Form(..., description="Brief headline of the municipal issue"),
     description: str = Form(..., description="Detailed description of the issue"),
     latitude: float = Form(..., ge=-90.0, le=90.0, description="GPS Latitude (-90 to 90)"),
@@ -133,8 +159,8 @@ async def report_issue(
       2. Analyze image with YOLOv8 for defect category and visual severity
       3. Analyze text description with DistilBERT for urgency
       4. Fuse multimodal scores into a calibrated Final Priority Score
-      5. Check for spatial duplicates within 50m radius using PostGIS ST_DWithin
-      6. Merge with existing ticket or create new MasterTicket
+      5. Persist every original report and its independent priority
+      6. Annotate potential duplicates within 5m using Sentence-BERT cosine similarity
     """
     # 1. Validate and save image locally
     storage_dir = os.path.join("data", "raw")
@@ -187,6 +213,20 @@ async def report_issue(
         else:
             detected_category = "pothole"
 
+    # Independent routing: original description still goes unchanged to DistilBERT.
+    request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
+    routing_started = perf_counter()
+    try:
+        routing = await run_in_threadpool(predict_department, title, description, request_id)
+    except Exception as exc:
+        # Defense at the add-on boundary, even if an unexpected service error escapes.
+        routing_event("routing_failed", request_id, error_type=type(exc).__name__,
+                      model_version=None, duration_ms=round((perf_counter() - routing_started) * 1000, 3))
+        routing = fallback_result()
+        routing_event("routing_fallback", request_id, reason="unavailable",
+                      prediction=routing.predicted_department, confidence=None, model_version=None,
+                      duration_ms=round((perf_counter() - routing_started) * 1000, 3))
+
     # 3. NLP text urgency analysis (DistilBERT)
     try:
         text_urgency: float = compute_text_urgency(description)
@@ -200,62 +240,6 @@ async def report_issue(
         visual_severity=visual_severity
     )
     priority_tier: str = classify_priority(final_priority_score)
-
-    # 5. Spatial Deduplication via PostGIS ST_DWithin (50-meter radius)
-    duplicate_ticket: Optional[MasterTicket] = None
-    try:
-        duplicate_ticket = find_duplicate_ticket(
-            db=db,
-            category=detected_category,
-            lat=latitude,
-            lon=longitude,
-            radius_meters=50
-        )
-    except Exception as exc:
-        db.rollback()
-        logger.warning("Deduplication lookup encountered an error (%s); proceeding as new ticket.", exc)
-
-    # 6. Duplicate handling vs New Ticket creation
-    if duplicate_ticket:
-        # Increment report count defensively
-        try:
-            current_count = int(duplicate_ticket.report_count) if duplicate_ticket.report_count is not None else 1
-            duplicate_ticket.report_count = current_count + 1
-        except (TypeError, ValueError):
-            duplicate_ticket.report_count = 2
-
-        duplicate_ticket.updated_at = datetime.utcnow()
-
-        # Escalate priority score if subsequent citizen report exhibits higher severity
-        try:
-            existing_score = float(duplicate_ticket.final_priority_score) if duplicate_ticket.final_priority_score is not None else 0.0
-        except (TypeError, ValueError):
-            existing_score = 0.0
-
-        if final_priority_score > existing_score:
-            duplicate_ticket.final_priority_score = final_priority_score
-            duplicate_ticket.priority_level = priority_tier
-
-        db.commit()
-        db.refresh(duplicate_ticket)
-
-        logger.info(
-            "Report merged into existing MasterTicket #%s (Total reports: %s)",
-            duplicate_ticket.id, duplicate_ticket.report_count
-        )
-
-        return {
-            "ticket_id": duplicate_ticket.id,
-            "is_duplicate": True,
-            "message": f"Report merged with existing open issue #{duplicate_ticket.id} within 50m radius.",
-            "category": str(duplicate_ticket.category),
-            "final_priority_score": float(duplicate_ticket.final_priority_score) if duplicate_ticket.final_priority_score is not None else final_priority_score,
-            "priority_level": str(duplicate_ticket.priority_level or priority_tier),
-            "text_urgency": text_urgency,
-            "visual_severity": visual_severity,
-            "report_count": int(duplicate_ticket.report_count or 1),
-            "status": str(duplicate_ticket.status or "OPEN")
-        }
 
     # PostGIS WKT Point: POINT(longitude latitude) with explicit SRID 4326 (WGS84)
     normalized_image_url = saved_image_path.replace("\\", "/")
@@ -275,7 +259,8 @@ async def report_issue(
         visual_severity=visual_severity,
         final_priority_score=final_priority_score,
         priority_level=priority_tier,
-        report_count=1
+        report_count=1,
+        **routing.to_dict()
     )
 
     try:
@@ -284,10 +269,10 @@ async def report_issue(
         db.refresh(new_ticket)
     except Exception as exc:
         db.rollback()
-        logger.exception("Database commit failed for new ticket: %s", exc)
+        logger.error("Database commit failed for new ticket (%s)", type(exc).__name__)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to persist municipal issue ticket: {exc}"
+            detail="Failed to persist municipal issue ticket."
         ) from exc
 
     logger.info(
@@ -295,7 +280,7 @@ async def report_issue(
         new_ticket.id, new_ticket.category, new_ticket.final_priority_score
     )
 
-    return {
+    response = {
         "ticket_id": new_ticket.id,
         "is_duplicate": False,
         "message": "New municipal issue ticket created successfully.",
@@ -305,5 +290,15 @@ async def report_issue(
         "text_urgency": text_urgency,
         "visual_severity": visual_severity,
         "report_count": new_ticket.report_count,
-        "status": new_ticket.status
+        "status": new_ticket.status,
+        "request_id": request_id,
+        **routing_fields(new_ticket)
     }
+
+    # The original row is already committed. Optional semantic failure cannot lose it.
+    duplicate_info = await annotate_duplicate(db, response["ticket_id"], request_id)
+    response.update(duplicate_info)
+    response["is_duplicate"] = duplicate_info["duplicate_group_id"] is not None
+    if response["is_duplicate"]:
+        response["message"] = "Report saved separately and linked to a possible duplicate group."
+    return response

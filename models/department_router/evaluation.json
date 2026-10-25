@@ -1,0 +1,281 @@
+{
+  "warning": "Synthetic held-out data only; does not establish real-world accuracy.",
+  "model_version": "synthetic-nb-v1-2edda6d04834",
+  "train_count": 100,
+  "test_count": 30,
+  "max_cross_split_token_jaccard": 0.2857,
+  "threshold": 0.6,
+  "coverage": 0.9333333333333333,
+  "accepted_accuracy": 0.9642857142857143,
+  "classification_report": {
+    "DRAINAGE": {
+      "precision": 1.0,
+      "recall": 0.8333333333333334,
+      "f1-score": 0.9090909090909091,
+      "support": 6.0
+    },
+    "ROADS": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 6.0
+    },
+    "SOLID_WASTE": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 6.0
+    },
+    "STREET_LIGHTING": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 6.0
+    },
+    "WATER_SUPPLY": {
+      "precision": 0.8571428571428571,
+      "recall": 1.0,
+      "f1-score": 0.9230769230769231,
+      "support": 6.0
+    },
+    "accuracy": 0.9666666666666667,
+    "macro avg": {
+      "precision": 0.9714285714285713,
+      "recall": 0.9666666666666668,
+      "f1-score": 0.9664335664335665,
+      "support": 30.0
+    },
+    "weighted avg": {
+      "precision": 0.9714285714285714,
+      "recall": 0.9666666666666667,
+      "f1-score": 0.9664335664335665,
+      "support": 30.0
+    }
+  },
+  "labels": [
+    "DRAINAGE",
+    "ROADS",
+    "SOLID_WASTE",
+    "STREET_LIGHTING",
+    "WATER_SUPPLY"
+  ],
+  "confusion_matrix": [
+    [
+      5,
+      0,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      6,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      6,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      6,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      6
+    ]
+  ],
+  "examples": [
+    {
+      "id": "test-drainage-01",
+      "expected": "DRAINAGE",
+      "predicted": "DRAINAGE",
+      "confidence": 0.988761
+    },
+    {
+      "id": "test-drainage-02",
+      "expected": "DRAINAGE",
+      "predicted": "DRAINAGE",
+      "confidence": 0.775129
+    },
+    {
+      "id": "test-drainage-03",
+      "expected": "DRAINAGE",
+      "predicted": "WATER_SUPPLY",
+      "confidence": 0.650026
+    },
+    {
+      "id": "test-drainage-04",
+      "expected": "DRAINAGE",
+      "predicted": "DRAINAGE",
+      "confidence": 0.863817
+    },
+    {
+      "id": "test-drainage-05",
+      "expected": "DRAINAGE",
+      "predicted": "DRAINAGE",
+      "confidence": 0.996132
+    },
+    {
+      "id": "test-drainage-06",
+      "expected": "DRAINAGE",
+      "predicted": "DRAINAGE",
+      "confidence": 0.993516
+    },
+    {
+      "id": "test-roads-01",
+      "expected": "ROADS",
+      "predicted": "MANUAL_REVIEW",
+      "confidence": 0.4574
+    },
+    {
+      "id": "test-roads-02",
+      "expected": "ROADS",
+      "predicted": "ROADS",
+      "confidence": 0.715282
+    },
+    {
+      "id": "test-roads-03",
+      "expected": "ROADS",
+      "predicted": "ROADS",
+      "confidence": 0.840418
+    },
+    {
+      "id": "test-roads-04",
+      "expected": "ROADS",
+      "predicted": "ROADS",
+      "confidence": 0.936662
+    },
+    {
+      "id": "test-roads-05",
+      "expected": "ROADS",
+      "predicted": "ROADS",
+      "confidence": 0.732238
+    },
+    {
+      "id": "test-roads-06",
+      "expected": "ROADS",
+      "predicted": "ROADS",
+      "confidence": 0.769229
+    },
+    {
+      "id": "test-solid_waste-01",
+      "expected": "SOLID_WASTE",
+      "predicted": "SOLID_WASTE",
+      "confidence": 0.831446
+    },
+    {
+      "id": "test-solid_waste-02",
+      "expected": "SOLID_WASTE",
+      "predicted": "SOLID_WASTE",
+      "confidence": 0.997494
+    },
+    {
+      "id": "test-solid_waste-03",
+      "expected": "SOLID_WASTE",
+      "predicted": "SOLID_WASTE",
+      "confidence": 0.967871
+    },
+    {
+      "id": "test-solid_waste-04",
+      "expected": "SOLID_WASTE",
+      "predicted": "SOLID_WASTE",
+      "confidence": 0.882019
+    },
+    {
+      "id": "test-solid_waste-05",
+      "expected": "SOLID_WASTE",
+      "predicted": "SOLID_WASTE",
+      "confidence": 0.996407
+    },
+    {
+      "id": "test-solid_waste-06",
+      "expected": "SOLID_WASTE",
+      "predicted": "SOLID_WASTE",
+      "confidence": 0.984273
+    },
+    {
+      "id": "test-street_lighting-01",
+      "expected": "STREET_LIGHTING",
+      "predicted": "MANUAL_REVIEW",
+      "confidence": 0.541511
+    },
+    {
+      "id": "test-street_lighting-02",
+      "expected": "STREET_LIGHTING",
+      "predicted": "STREET_LIGHTING",
+      "confidence": 0.977521
+    },
+    {
+      "id": "test-street_lighting-03",
+      "expected": "STREET_LIGHTING",
+      "predicted": "STREET_LIGHTING",
+      "confidence": 0.991638
+    },
+    {
+      "id": "test-street_lighting-04",
+      "expected": "STREET_LIGHTING",
+      "predicted": "STREET_LIGHTING",
+      "confidence": 0.991297
+    },
+    {
+      "id": "test-street_lighting-05",
+      "expected": "STREET_LIGHTING",
+      "predicted": "STREET_LIGHTING",
+      "confidence": 0.919359
+    },
+    {
+      "id": "test-street_lighting-06",
+      "expected": "STREET_LIGHTING",
+      "predicted": "STREET_LIGHTING",
+      "confidence": 0.997535
+    },
+    {
+      "id": "test-water_supply-01",
+      "expected": "WATER_SUPPLY",
+      "predicted": "WATER_SUPPLY",
+      "confidence": 0.999639
+    },
+    {
+      "id": "test-water_supply-02",
+      "expected": "WATER_SUPPLY",
+      "predicted": "WATER_SUPPLY",
+      "confidence": 0.997884
+    },
+    {
+      "id": "test-water_supply-03",
+      "expected": "WATER_SUPPLY",
+      "predicted": "WATER_SUPPLY",
+      "confidence": 0.999994
+    },
+    {
+      "id": "test-water_supply-04",
+      "expected": "WATER_SUPPLY",
+      "predicted": "WATER_SUPPLY",
+      "confidence": 1.0
+    },
+    {
+      "id": "test-water_supply-05",
+      "expected": "WATER_SUPPLY",
+      "predicted": "WATER_SUPPLY",
+      "confidence": 0.992625
+    },
+    {
+      "id": "test-water_supply-06",
+      "expected": "WATER_SUPPLY",
+      "predicted": "WATER_SUPPLY",
+      "confidence": 0.9995
+    }
+  ]
+}

@@ -34,6 +34,31 @@ def _haversine_distance_meters(lat1: float, lon1: float, lat2: float, lon2: floa
     return radius_earth_meters * c
 
 
+def find_nearby_tickets(db, lat, lon, exclude_id, radius_meters=5.0):
+    """All nearby OPEN reports, across visual categories, for semantic review.
+
+    Reuses the existing geography/Haversine paths. Never merges or changes rows.
+    """
+    base = db.query(MasterTicket).filter(
+        MasterTicket.id != exclude_id, MasterTicket.status == "OPEN")
+    if USE_POSTGIS:
+        try:
+            from geoalchemy2 import Geography
+            from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
+            point = ST_SetSRID(ST_MakePoint(float(lon), float(lat)), 4326)
+            return base.filter(
+                MasterTicket.location.isnot(None),
+                ST_DWithin(cast(MasterTicket.location, Geography),
+                           cast(point, Geography), radius_meters)
+            ).order_by(MasterTicket.id).all()
+        except Exception:
+            db.rollback()
+    candidates = base.filter(MasterTicket.latitude.isnot(None),
+                             MasterTicket.longitude.isnot(None)).order_by(MasterTicket.id).all()
+    return [t for t in candidates if _haversine_distance_meters(
+        lat, lon, t.latitude, t.longitude) <= radius_meters]
+
+
 def _find_duplicate_fallback(
     db: Session,
     clean_category: str,
