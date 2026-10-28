@@ -26,6 +26,7 @@ from backend.services.cv_service import process_image_with_yolo
 from backend.services.nlp_service import compute_text_urgency
 from backend.services.fusion_service import fuse_scores, classify_priority
 from backend.services.semantic_duplicate_service import annotate_duplicate
+from backend.services.consistency_service import verify_image_text
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,8 @@ def list_reports(db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
             "duplicate_group_id": t.duplicate_group_id,
             "duplicate_similarity": t.duplicate_similarity,
             "related_report_count": max(0, group_counts[t.duplicate_group_id] - 1) if t.duplicate_group_id is not None else 0,
+            "clip_similarity": t.clip_similarity,
+            "clip_status": t.clip_status,
             "ticket_id": t.id,
             "title": t.title,
             "description": t.description,
@@ -110,6 +113,8 @@ def update_report_status(
         "ticket_id": ticket.id,
         "status": ticket.status,
         "message": f"Ticket #{ticket.id} status updated to {ticket.status}.",
+        "clip_similarity": ticket.clip_similarity,
+        "clip_status": ticket.clip_status,
         **routing_fields(ticket)
     }
 
@@ -125,6 +130,8 @@ class ReportResponse(BaseModel):
     duplicate_group_id: Optional[int] = None
     duplicate_similarity: Optional[float] = None
     related_report_count: int = 0
+    clip_similarity: Optional[float] = None
+    clip_status: Optional[str] = None
     ticket_id: int = Field(..., description="Unique MasterTicket database identifier")
     is_duplicate: bool = Field(..., description="True if report belongs to a potential duplicate group; original report is retained")
     message: str = Field(..., description="Triage and deduplication outcome summary")
@@ -241,6 +248,17 @@ async def report_issue(
     )
     priority_tier: str = classify_priority(final_priority_score)
 
+    # 5. Advisory Image-Text Consistency Verification (CLIP); never alters scores or acceptance
+    clip_similarity: Optional[float] = None
+    clip_status: str = "UNVERIFIED"
+    try:
+        clip_similarity, clip_status = await run_in_threadpool(
+            verify_image_text, saved_image_path, title, description, request_id
+        )
+    except Exception as exc:
+        logger.warning("CLIP consistency verification failed (%s), defaulting to UNVERIFIED", exc)
+        clip_similarity, clip_status = None, "UNVERIFIED"
+
     # PostGIS WKT Point: POINT(longitude latitude) with explicit SRID 4326 (WGS84)
     normalized_image_url = saved_image_path.replace("\\", "/")
     from backend.database.models import USE_POSTGIS
@@ -260,6 +278,8 @@ async def report_issue(
         final_priority_score=final_priority_score,
         priority_level=priority_tier,
         report_count=1,
+        clip_similarity=clip_similarity,
+        clip_status=clip_status,
         **routing.to_dict()
     )
 
@@ -292,6 +312,8 @@ async def report_issue(
         "report_count": new_ticket.report_count,
         "status": new_ticket.status,
         "request_id": request_id,
+        "clip_similarity": new_ticket.clip_similarity,
+        "clip_status": new_ticket.clip_status,
         **routing_fields(new_ticket)
     }
 

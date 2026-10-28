@@ -96,7 +96,40 @@ def init_database() -> None:
                 """))
                 connection.commit()
 
-                # 3. Ensure semantic duplicate columns exist (002_semantic_duplicates migration)
+                # 3. Ensure department routing columns exist (001_department_routing migration)
+                connection.execute(text("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'predicted_department'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN predicted_department VARCHAR(100);
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'department_confidence'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN department_confidence DOUBLE PRECISION;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'routing_method'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN routing_method VARCHAR(100);
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'routing_model_version'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN routing_model_version VARCHAR(100);
+                        END IF;
+                    END $$;
+                """))
+                connection.commit()
+                logger.info("Department routing columns verified.")
+
+                # 4. Ensure semantic duplicate columns exist (002_semantic_duplicates migration)
                 connection.execute(text("""
                     DO $$
                     BEGIN
@@ -118,6 +151,27 @@ def init_database() -> None:
                 """))
                 connection.commit()
                 logger.info("Semantic duplicate columns verified.")
+
+                # 5. Ensure CLIP consistency columns exist (003_clip_consistency migration)
+                connection.execute(text("""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'clip_similarity'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN clip_similarity DOUBLE PRECISION;
+                        END IF;
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name = 'master_tickets' AND column_name = 'clip_status'
+                        ) THEN
+                            ALTER TABLE master_tickets ADD COLUMN clip_status VARCHAR(20);
+                        END IF;
+                    END $$;
+                """))
+                connection.commit()
+                logger.info("CLIP consistency columns verified.")
 
         logger.info("Database initialization completed successfully!")
 

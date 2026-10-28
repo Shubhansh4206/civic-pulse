@@ -35,6 +35,7 @@ def api(monkeypatch, tmp_path):
     sentiment = Mock(return_value=[{"label": "NEGATIVE", "score": 0.9}])
     monkeypatch.setattr(cv, "model", vision)
     monkeypatch.setattr(nlp, "_NLP_PIPELINE", sentiment)
+    monkeypatch.setattr(endpoints, "verify_image_text", Mock(return_value=(0.85, "CONSISTENT")))
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     sessions = sessionmaker(bind=engine)
@@ -77,6 +78,8 @@ def test_enabled_routing_preserves_actual_legacy_scores(api, monkeypatch):
     assert routed["text_urgency"] == 0.975
     assert routed["final_priority_score"] == 1.0  # Existing synergy boost.
     assert routed["predicted_department"] == "ROADS"
+    assert routed["clip_status"] == "CONSISTENT"
+    assert routed["clip_similarity"] == 0.85
     assert sentiment.call_args_list[0] == sentiment.call_args_list[1]
     assert vision.call_count == 2
     assert routed["request_id"] == routed_response.headers["x-request-id"]
@@ -84,11 +87,14 @@ def test_enabled_routing_preserves_actual_legacy_scores(api, monkeypatch):
         ticket = db.get(model, routed["ticket_id"])
         assert ticket.predicted_department == "ROADS"
         assert ticket.routing_model_version == routed["routing_model_version"]
+        assert ticket.clip_status == "CONSISTENT"
+        assert ticket.clip_similarity == 0.85
     listed = client.get("/api/v1/report").json()
-    assert len(listed) == 2 and all("department_confidence" in t for t in listed)
+    assert len(listed) == 2 and all("department_confidence" in t for t in listed) and all("clip_status" in t for t in listed)
     assert client.get("/api/v1/tickets").status_code == 200
     patched = client.patch(f'/api/v1/report/{routed["ticket_id"]}', json={"status": "RESOLVED"})
     assert patched.json()["predicted_department"] == "ROADS"
+    assert patched.json()["clip_status"] == "CONSISTENT"
 
 
 def test_semantic_duplicate_preserves_both_reports(api):

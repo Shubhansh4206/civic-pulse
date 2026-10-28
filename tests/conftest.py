@@ -5,6 +5,7 @@ import types
 
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["DEBUG"] = "False"
+os.environ["CLIP_ENABLED"] = "False"
 
 # Stub out geoalchemy2 so ORM models can be imported without the real package.
 # The actual geometry column becomes a plain String under SQLite anyway.

@@ -2,10 +2,16 @@
 from importlib import import_module
 
 _EXPORTS = {
-    "process_image_with_yolo": "cv_service", "fuse_scores": "fusion_service",
-    "fuse_multimodal_ticket": "fusion_service", "classify_priority": "fusion_service",
-    "PriorityLevel": "fusion_service", "compute_text_urgency": "nlp_service",
+    "process_image_with_yolo": "cv_service",
+    "fuse_scores": "fusion_service",
+    "fuse_multimodal_ticket": "fusion_service",
+    "classify_priority": "fusion_service",
+    "PriorityLevel": "fusion_service",
+    "compute_text_urgency": "nlp_service",
     "find_duplicate_ticket": "deduplication",
+    "predict_department": "department_service",
+    "annotate_duplicate": "semantic_duplicate_service",
+    "verify_image_text": "consistency_service",
 }
 
 
@@ -24,4 +30,7 @@ __all__ = [
     "PriorityLevel",
     "compute_text_urgency",
     "find_duplicate_ticket",
+    "predict_department",
+    "annotate_duplicate",
+    "verify_image_text",
 ]

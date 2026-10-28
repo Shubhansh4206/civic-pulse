@@ -48,3 +48,4 @@ models/*.pt
 
 models/all-MiniLM-L6-v2/
 models/.semantic-cache/
+models/clip-vit-base-patch32/

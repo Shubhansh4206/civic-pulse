@@ -233,6 +233,26 @@ function TicketCard({ ticket, active, onSelect, cardRef }) {
                 </div>
               )}
 
+              {ticket.clip_status && (
+                <div
+                  className={`rounded-2xl px-3.5 py-2.5 text-xs ${
+                    ticket.clip_status === "CONSISTENT"
+                      ? "bg-emerald-50 text-emerald-800"
+                      : ticket.clip_status === "SUSPICIOUS"
+                      ? "bg-rose-50 text-rose-800"
+                      : "bg-slate-50 text-slate-600"
+                  }`}
+                >
+                  <span className="font-semibold text-slate-800">Image-Text Match: </span>
+                  <span className="font-medium">{ticket.clip_status}</span>
+                  {ticket.clip_similarity != null && (
+                    <span className="ml-2 text-slate-500">
+                      ({pct(ticket.clip_similarity)} similarity)
+                    </span>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-3 rounded-2xl bg-slate-50 p-3.5">
                 <ScoreBar label="Priority score" value={ticket.final_priority_score} color={color} />
                 <ScoreBar label="Text urgency" value={ticket.text_urgency} color="#6366f1" />
