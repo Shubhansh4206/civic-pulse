@@ -10,8 +10,10 @@ CivicPulse is an advanced, AI-driven municipal incident reporting, triage, and d
 CivicPulse does not rely on a single data point when triaging municipal defects. Every incoming report passes through an ensemble of dedicated AI/ML services:
 
 - **📸 Computer Vision Defect Detection (YOLOv8)**:
-  - Custom-trained YOLOv8 weights (`models/yolov8_civic.pt`) detect and categorize municipal hazards (e.g., `pothole`, `garbage_pile`).
-  - Automatically isolates the highest-confidence defect and outputs a normalized `visual_severity` score ($0.0 - 1.0$).
+  - Custom-trained YOLOv8 weights (`models/yolov8_civic.pt`) detect and categorize municipal hazards:
+    - **Class 0**: `pothole` (weight: 1.00)
+    - **Class 1**: `garbage_dumpster` (mapped to `garbage_pile`, weight: 0.85)
+  - Filters strictly for municipal hazard classes, isolates the highest-confidence defect, and outputs a normalized `visual_severity` score ($0.0 - 1.0$).
 - **✍️ Deep Contextual NLP Urgency Scoring (DistilBERT)**:
   - Leverages local CPU DistilBERT (`distilbert-base-uncased-finetuned-sst-2-english`) to evaluate citizen distress and sentiment.
   - Modulated by a domain-specific municipal hazard keyword lexicon with graded adjustments for critical hazard keywords (e.g., *sinkhole, explosion, live wire, gas leak*), medium concerns (*deep, broken, flooding*), and routine maintenance (*cosmetic, paint*).
@@ -44,7 +46,7 @@ CivicPulse does not rely on a single data point when triaging municipal defects.
 | **NLP & Vision-Language** | Hugging Face Transformers (`DistilBERT`, `CLIP ViT-B/32`), Sentence-Transformers (`all-MiniLM-L6-v2`), NLTK (`WordNet`), Scikit-Learn |
 | **Frontend Framework** | React 19, Vite, Tailwind CSS v4 |
 | **Mapping & Icons** | React-Leaflet, Leaflet, OpenStreetMap, Lucide React, Axios |
-| **Testing** | Pytest, Pytest-Asyncio |
+| **Testing** | Pytest, Pytest-Asyncio, HTTPX |
 
 ---
 
@@ -101,20 +103,32 @@ SEMANTIC_DUPLICATE_THRESHOLD=0.80
 2. **Install Python Dependencies**:
    ```bash
    pip install -r requirements.txt
+   pip install -r requirements-dev.txt   # Optional: For running unit & integration tests
    ```
 
 3. **Provision Pretrained AI Models (One-Time Setup)**:
-   Download and cache the required offline transformer models and NLTK corpora:
-   ```bash
-   # Download Sentence-BERT for semantic duplicate detection
-   python scripts/download_semantic_model.py
+   - **Custom YOLOv8 Model (`models/yolov8_civic.pt`)**:
+     Place your fine-tuned `best.pt` weights into `models/yolov8_civic.pt`, or train using the built-in CLI:
+     ```bash
+     python scripts/train_yolo.py --epochs 10 --batch 16 --device cpu
+     ```
+     Verify model classes:
+     ```bash
+     python -c "from ultralytics import YOLO; m = YOLO('models/yolov8_civic.pt'); print('Classes:', m.names)"
+     # Expected: {0: 'pothole', 1: 'garbage_dumpster'}
+     ```
 
-   # Download OpenAI CLIP for image-text consistency verification
-   python scripts/download_clip_model.py
+   - **Offline Transformers & NLTK Corpora**:
+     ```bash
+     # Download Sentence-BERT for semantic duplicate detection
+     python scripts/download_semantic_model.py
 
-   # Train and export the Department Router artifact
-   python scripts/train_department_router.py
-   ```
+     # Download OpenAI CLIP for image-text consistency verification
+     python scripts/download_clip_model.py
+
+     # Train and export the Department Router artifact
+     python scripts/train_department_router.py
+     ```
 
 4. **Initialize Database & Apply Additive Migrations**:
    ```powershell
@@ -177,10 +191,16 @@ Open a **separate terminal window** for the frontend application:
 
 ## 🧪 Testing & Verification
 
-CivicPulse includes comprehensive unit and integration test suites covering the late fusion engine, department routing, semantic duplicate detection, and CLIP consistency checking.
+CivicPulse includes a comprehensive 41-case test suite covering:
+- YOLOv8 computer vision bounding-box filtering and severity scoring
+- OpenAI CLIP image-text consistency verification
+- Multimodal late fusion score combining and critical synergy escalation
+- WordNet Lesk WSD and Multinomial Naive Bayes department routing
+- Geodesic spatial radius and Sentence-BERT semantic deduplication
 
-Run the test suite:
+Install testing requirements and run pytest:
 ```bash
+pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
@@ -227,9 +247,10 @@ civic-pulse/
 │   ├── download_semantic_model.py     # Offline Sentence-BERT provisioning
 │   ├── train_department_router.py     # Department routing classifier trainer
 │   └── train_yolo.py                  # YOLOv8 training & dataset merge CLI
-├── tests/                             # Comprehensive test suite
+├── tests/                             # Comprehensive test suite (41 tests)
 ├── create_db.py                       # PostgreSQL automated database creator
 ├── requirements.txt                   # Production Python dependencies
+├── requirements-dev.txt               # Development & test dependencies
 └── README.md                          # Project documentation
 ```
 
