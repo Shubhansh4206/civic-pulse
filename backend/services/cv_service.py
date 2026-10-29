@@ -131,7 +131,8 @@ def analyze_image(
         cls_val = int(box.cls[0].item()) if hasattr(box.cls[0], "item") else int(box.cls[0])
         conf_val = float(box.conf[0].item()) if hasattr(box.conf[0], "item") else float(box.conf[0])
 
-        if conf_val > best_conf:
+        # Filter strictly for target municipal hazard classes
+        if cls_val in CLASS_MAPPING and conf_val > best_conf:
             best_conf = conf_val
             best_class_id = cls_val
 
